@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Admin Dashboard</h1>
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <p><strong>Current Recommendation Weights:</strong></p>
+                <ul>
+                    <li>Content-Based: {{ "%.2f"|format(weights.content_based * 100) }}%</li>
+                    <li>Collaborative: {{ "%.2f"|format(weights.collaborative * 100) }}%</li>
+                    <li>Neural: {{ "%.2f"|format(weights.neural * 100) }}%</li>
+                </ul>
+                <a href="{{ url_for('adjust_weights') }}" class="btn btn-primary btn-sm">Adjust Weights</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Recommendation Type Performance -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Recommendation Type Performance</h4>
+                </div>
+                <div class="card-body">
+                    {% if avg_rating_by_type %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Recommendation Type</th>
+                                        <th>Average Rating</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for type, rating in avg_rating_by_type.items() %}
+                                    <tr>
+                                        <td>{{ type }}</td>
+                                        <td>{{ "%.2f"|format(rating) }} / 5.0</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No feedback data available yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Rating Distribution -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Rating Distribution</h4>
+                </div>
+                <div class="card-body">
+                    {% if rating_counts %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Rating</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for rating in range(5, 0, -1) %}
+                                    <tr>
+                                        <td>{{ rating }} Star{% if rating != 1 %}s{% endif %}</td>
+                                        <td>{{ rating_counts.get(rating, 0) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No rating data available yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Activity Stats -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>User Activity</h4>
+                </div>
+                <div class="card-body">
+                    {% if activity_counts %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Activity Type</th>
+                                        <th>Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for activity, count in activity_counts.items() %}
+                                    <tr>
+                                        <td>{{ activity|capitalize }}</td>
+                                        <td>{{ count }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No activity data available yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Top Products -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Top Products</h4>
+                </div>
+                <div class="card-body">
+                    {% if top_products %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Activity Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product, count in top_products.items() %}
+                                    <tr>
+                                        <td>{{ product }}</td>
+                                        <td>{{ count }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No product data available yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Feedback -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>Recent Feedback</h4>
+                </div>
+                <div class="card-body">
+                    {% if not recent_feedback.empty %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>User ID</th>
+                                        <th>Product</th>
+                                        <th>Recommendation Type</th>
+                                        <th>Rating</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for _, row in recent_feedback.iterrows() %}
+                                    <tr>
+                                        <td>{{ row.user_id }}</td>
+                                        <td>{{ row.product_name }}</td>
+                                        <td>{{ row.recommendation_type }}</td>
+                                        <td>{{ row.rating }}</td>
+                                        <td>{{ row.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-center">No feedback data available yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
