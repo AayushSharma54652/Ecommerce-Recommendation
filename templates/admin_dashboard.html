@@ -193,5 +193,85 @@
             </div>
         </div>
     </div>
+
+    <!-- Add this section inside the admin_dashboard.html, after the existing cards -->
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>NLP Search Analytics</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="mb-3">Popular Search Queries</h5>
+                        {% if activity_df is defined and not activity_df.empty %}
+                            {% set nlp_searches = activity_df[activity_df.activity_type == 'nlp_search'] %}
+                            {% if not nlp_searches.empty %}
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Query</th>
+                                                <th>Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for query, count in nlp_searches.groupby('product_name').size().sort_values(ascending=False).head(10).items() %}
+                                            <tr>
+                                                <td>{{ query }}</td>
+                                                <td>{{ count }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <p class="text-center">No NLP searches yet</p>
+                            {% endif %}
+                        {% else %}
+                            <p class="text-center">No search data available</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h5 class="mb-3">NLP Search Performance</h5>
+                        {% if avg_rating_by_type is defined and 'NLP-Search' in avg_rating_by_type %}
+                            <div class="alert alert-info">
+                                <strong>Average Rating for NLP Search:</strong> 
+                                {{ "%.2f"|format(avg_rating_by_type['NLP-Search']) }} / 5.0
+                            </div>
+                            
+                            <div class="progress" style="height: 30px;">
+                                <div class="progress-bar bg-success" 
+                                     style="width: {{ (avg_rating_by_type['NLP-Search'] / 5) * 100 }}%">
+                                    {{ "%.2f"|format(avg_rating_by_type['NLP-Search']) }}
+                                </div>
+                            </div>
+                            
+                            <div class="mt-3">
+                                <p><strong>Compared to other recommendation types:</strong></p>
+                                <ul>
+                                    {% for type, rating in avg_rating_by_type.items() %}
+                                        {% if type != 'NLP-Search' %}
+                                        <li>{{ type }}: {{ "%.2f"|format(rating) }}</li>
+                                        {% endif %}
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% else %}
+                            <p class="text-center">No NLP search ratings yet</p>
+                            
+                            <div class="alert alert-warning">
+                                <strong>Tip:</strong> Encourage users to provide feedback on NLP search results
+                                to track performance.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 {% endblock %}
