@@ -197,6 +197,78 @@
     background-color: #28a745;
     margin-right: 5px;
 }
+
+/* Image upload styles */
+.image-upload-container {
+    margin: 10px 0;
+    text-align: center;
+}
+
+.image-upload-btn {
+    display: inline-block;
+    padding: 8px 15px;
+    margin: 0 10px;
+    border: 1px dashed #ced4da;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.image-upload-btn:hover {
+    background-color: #e9ecef;
+}
+
+.image-upload-btn i {
+    margin-right: 5px;
+}
+
+.uploaded-image-preview {
+    max-width: 200px;
+    max-height: 150px;
+    border-radius: 8px;
+    margin: 10px auto;
+    display: none;
+}
+
+.image-actions {
+    margin-top: 10px;
+    display: none;
+}
+
+.chat-tool-buttons {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 15px;
+    background-color: #f8f9fa;
+    border-top: 1px solid #e1e1e1;
+}
+
+.chat-tool-buttons button {
+    border: none;
+    background: none;
+    color: #6c757d;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 5px 10px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.chat-tool-buttons button:hover {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+.image-upload-section {
+    display: none;
+    padding: 15px;
+    border-top: 1px solid #e1e1e1;
+    background-color: #f8f9fa;
+}
+
+.image-upload-active .image-upload-section {
+    display: block;
+}
 {% endblock %}
 
 {% block content %}
@@ -211,7 +283,7 @@
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div class="chat-container">
+                    <div class="chat-container" id="chatContainer">
                         <div class="chat-messages" id="chatMessages">
                             <!-- Welcome message -->
                             <div class="welcome-bubble">
@@ -222,6 +294,7 @@
                                     <h5>Hello, I'm your AI Shopping Assistant!</h5>
                                     <p>I can help you find products, provide recommendations, answer questions about items, and more.</p>
                                     <p>Just tell me what you're looking for or try one of the suggestions below.</p>
+                                    <p><strong>New!</strong> You can now upload an image to search for similar products.</p>
                                 </div>
                             </div>
                             
@@ -235,6 +308,34 @@
                             <div class="suggestion-chip">Help me find a gift</div>
                             <div class="suggestion-chip">Show me popular products</div>
                             <div class="suggestion-chip">What's on sale?</div>
+                        </div>
+                        
+                        <!-- Image upload section -->
+                        <div class="image-upload-section" id="imageUploadSection">
+                            <div class="image-upload-container">
+                                <label for="imageInput" class="image-upload-btn">
+                                    <i class="fas fa-image"></i> Select Image
+                                </label>
+                                <input type="file" id="imageInput" style="display: none;" accept="image/*">
+                                <span class="text-muted" id="selectedFileName"></span>
+                            </div>
+                            <div class="text-center">
+                                <img src="" id="uploadedImagePreview" class="uploaded-image-preview">
+                                <div class="image-actions" id="imageActions">
+                                    <button class="btn btn-sm btn-secondary mr-2" id="cancelImageBtn">Cancel</button>
+                                    <button class="btn btn-sm btn-primary" id="searchWithImageBtn">Search with this image</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Tool buttons section -->
+                        <div class="chat-tool-buttons">
+                            <button id="toggleImageUploadBtn" title="Upload Image">
+                                <i class="fas fa-camera"></i>
+                            </button>
+                            <button id="clearChatBtn" title="Clear Chat">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
                         </div>
                         
                         <div class="chat-input">
@@ -262,23 +363,30 @@
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-4 text-center mb-3">
+                        <div class="col-md-3 text-center mb-3">
                             <div class="mb-3">
                                 <i class="fas fa-comments text-primary" style="font-size: 2rem;"></i>
                             </div>
                             <h6>Natural Conversations</h6>
                             <p class="small text-muted">Chat with your assistant using everyday language about what you're looking for</p>
                         </div>
-                        <div class="col-md-4 text-center mb-3">
+                        <div class="col-md-3 text-center mb-3">
                             <div class="mb-3">
-                                <i class="fas fa-brain text-success" style="font-size: 2rem;"></i>
+                                <i class="fas fa-camera text-success" style="font-size: 2rem;"></i>
+                            </div>
+                            <h6>Visual Search</h6>
+                            <p class="small text-muted">Upload images of products you like to find similar items</p>
+                        </div>
+                        <div class="col-md-3 text-center mb-3">
+                            <div class="mb-3">
+                                <i class="fas fa-brain text-info" style="font-size: 2rem;"></i>
                             </div>
                             <h6>AI-Powered Understanding</h6>
                             <p class="small text-muted">Advanced machine learning understands your preferences and needs</p>
                         </div>
-                        <div class="col-md-4 text-center mb-3">
+                        <div class="col-md-3 text-center mb-3">
                             <div class="mb-3">
-                                <i class="fas fa-user-check text-info" style="font-size: 2rem;"></i>
+                                <i class="fas fa-user-check text-warning" style="font-size: 2rem;"></i>
                             </div>
                             <h6>Personalized Results</h6>
                             <p class="small text-muted">Gets smarter with each interaction to deliver tailored recommendations</p>
@@ -298,6 +406,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatInput = document.getElementById('chatInput');
     const sendButton = document.getElementById('sendButton');
     const suggestionChips = document.getElementById('suggestionChips');
+    const toggleImageUploadBtn = document.getElementById('toggleImageUploadBtn');
+    const chatContainer = document.getElementById('chatContainer');
+    const imageUploadSection = document.getElementById('imageUploadSection');
+    const imageInput = document.getElementById('imageInput');
+    const uploadedImagePreview = document.getElementById('uploadedImagePreview');
+    const selectedFileName = document.getElementById('selectedFileName');
+    const imageActions = document.getElementById('imageActions');
+    const cancelImageBtn = document.getElementById('cancelImageBtn');
+    const searchWithImageBtn = document.getElementById('searchWithImageBtn');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    
+    let currentImage = null;
     
     // Load suggestions from API
     loadSuggestions();
@@ -307,6 +427,31 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender === 'user' ? 'message-user' : 'message-assistant');
         messageDiv.innerText = text;
+        
+        const timeDiv = document.createElement('div');
+        timeDiv.classList.add('message-time');
+        timeDiv.innerText = formatTime(timestamp);
+        
+        const messageContainer = document.createElement('div');
+        messageContainer.appendChild(messageDiv);
+        messageContainer.appendChild(timeDiv);
+        
+        chatMessages.appendChild(messageContainer);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Function to add an image message to the chat
+    function addImageMessage(imageDataUrl, sender, timestamp = new Date()) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', sender === 'user' ? 'message-user' : 'message-assistant');
+        
+        const imageElement = document.createElement('img');
+        imageElement.src = imageDataUrl;
+        imageElement.style.maxWidth = '100%';
+        imageElement.style.maxHeight = '200px';
+        imageElement.style.borderRadius = '8px';
+        
+        messageDiv.appendChild(imageElement);
         
         const timeDiv = document.createElement('div');
         timeDiv.classList.add('message-time');
@@ -375,15 +520,34 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Send message to the backend
-    function sendMessage(message) {
+    function sendMessage(message, imageData = null) {
         // Add user message to chat
         addMessage(message, 'user');
+        
+        // Add image to chat if provided
+        if (imageData) {
+            addImageMessage(imageData, 'user');
+        }
         
         // Clear input
         chatInput.value = '';
         
+        // Hide image upload section and reset
+        resetImageUpload();
+        
         // Show typing indicator
         const typingIndicator = showTypingIndicator();
+        
+        // Prepare data for sending
+        const requestData = {
+            message: message
+        };
+        
+        // If there's an image, prepare for image search
+        if (imageData) {
+            handleImageSearch(imageData, message);
+            return;
+        }
         
         // Send message to backend
         fetch('/api/ai_assistant/chat', {
@@ -391,9 +555,7 @@ document.addEventListener('DOMContentLoaded', function() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                message: message
-            })
+            body: JSON.stringify(requestData)
         })
         .then(response => response.json())
         .then(data => {
@@ -423,6 +585,108 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Handle image search
+    function handleImageSearch(imageData, searchQuery) {
+        // Convert base64 data to blob
+        const base64Data = imageData.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteArrays = [];
+        
+        for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+            const slice = byteCharacters.slice(offset, offset + 1024);
+            
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+                byteNumbers[i] = slice.charCodeAt(i);
+            }
+            
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+        }
+        
+        const blob = new Blob(byteArrays, {type: 'image/jpeg'});
+        
+        // Create form data for the image upload
+        const formData = new FormData();
+        formData.append('image_file', blob, 'image.jpg');
+        
+        // Add text query if provided
+        if (searchQuery && searchQuery.trim() !== '') {
+            formData.append('text_query', searchQuery);
+        }
+        
+        // Determine which endpoint to use based on whether there's a text query
+        let endpoint = '/image_search';
+        
+        if (searchQuery && searchQuery.trim() !== '') {
+            endpoint = '/multimodal_search_route';
+            // Add default weights if using multimodal search
+            formData.append('image_weight', '50');
+        }
+        
+        // Send request to appropriate endpoint
+        fetch(endpoint, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Remove typing indicator
+            removeTypingIndicator();
+            
+            // Parse HTML response to extract products
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // Extract products from the search results
+            const productCards = doc.querySelectorAll('.card');
+            
+            if (productCards.length > 0) {
+                // Create products array from HTML
+                const products = [];
+                
+                productCards.forEach(card => {
+                    const nameElement = card.querySelector('.card-title');
+                    const brandElement = card.querySelector('.card-text');
+                    const ratingElement = card.querySelectorAll('.card-text')[1];
+                    const imageElement = card.querySelector('img');
+                    
+                    if (nameElement && imageElement) {
+                        const product = {
+                            Name: nameElement.textContent.trim(),
+                            Brand: brandElement ? brandElement.textContent.replace('Brand:', '').trim() : 'Unknown',
+                            Rating: ratingElement ? parseFloat(ratingElement.textContent.replace('Rating:', '').replace('★', '').trim()) : 0,
+                            ImageURL: imageElement.src
+                        };
+                        
+                        products.push(product);
+                    }
+                });
+                
+                // Generate response message
+                let responseText = "Here are some products that match your image";
+                if (searchQuery && searchQuery.trim() !== '') {
+                    responseText += ` and your search for "${searchQuery}"`;
+                }
+                responseText += ":";
+                
+                // Add assistant response
+                addMessage(responseText, 'assistant');
+                
+                // Add product carousel
+                addProductCarousel(products);
+            } else {
+                // No products found
+                addMessage("I couldn't find any products that match your image. Could you try a different image or search term?", 'assistant');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            removeTypingIndicator();
+            addMessage("I'm sorry, there was an error processing your image. Please try again later.", 'assistant');
+        });
+    }
+    
     // Load personalized suggestions
     function loadSuggestions() {
         fetch('/api/ai_assistant/suggestions')
@@ -449,11 +713,87 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
+    // Toggle image upload section
+    toggleImageUploadBtn.addEventListener('click', function() {
+        chatContainer.classList.toggle('image-upload-active');
+        
+        if (chatContainer.classList.contains('image-upload-active')) {
+            toggleImageUploadBtn.innerHTML = '<i class="fas fa-times"></i>';
+            toggleImageUploadBtn.title = "Close Image Upload";
+        } else {
+            toggleImageUploadBtn.innerHTML = '<i class="fas fa-camera"></i>';
+            toggleImageUploadBtn.title = "Upload Image";
+            resetImageUpload();
+        }
+    });
+    
+    // Handle image file selection
+    imageInput.addEventListener('change', function(e) {
+        if (!e.target.files.length) return;
+        
+        const file = e.target.files[0];
+        selectedFileName.textContent = file.name;
+        
+        // Read and preview the image
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            uploadedImagePreview.src = event.target.result;
+            uploadedImagePreview.style.display = 'block';
+            imageActions.style.display = 'block';
+            currentImage = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+    
+    // Cancel image upload
+    cancelImageBtn.addEventListener('click', function() {
+        resetImageUpload();
+    });
+    
+    // Search with selected image
+    searchWithImageBtn.addEventListener('click', function() {
+        if (!currentImage) return;
+        
+        const message = "Find products like this image";
+        chatInput.value = '';
+        
+        sendMessage(message, currentImage);
+    });
+    
+    // Reset image upload section
+    function resetImageUpload() {
+        imageInput.value = '';
+        uploadedImagePreview.src = '';
+        uploadedImagePreview.style.display = 'none';
+        selectedFileName.textContent = '';
+        imageActions.style.display = 'none';
+        currentImage = null;
+        
+        chatContainer.classList.remove('image-upload-active');
+        toggleImageUploadBtn.innerHTML = '<i class="fas fa-camera"></i>';
+        toggleImageUploadBtn.title = "Upload Image";
+    }
+    
+    // Clear chat history
+    clearChatBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to clear the chat history?')) {
+            // Keep welcome message, remove all other messages
+            const welcomeBubble = document.querySelector('.welcome-bubble');
+            chatMessages.innerHTML = '';
+            if (welcomeBubble) {
+                chatMessages.appendChild(welcomeBubble);
+            }
+        }
+    });
+    
     // Handle send button click
     sendButton.addEventListener('click', function() {
         const message = chatInput.value.trim();
         if (message) {
-            sendMessage(message);
+            sendMessage(message, currentImage);
+        } else if (currentImage) {
+            // If there's an image but no text, use default message
+            sendMessage("Find products like this image", currentImage);
         }
     });
     
@@ -462,7 +802,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.key === 'Enter') {
             const message = chatInput.value.trim();
             if (message) {
-                sendMessage(message);
+                sendMessage(message, currentImage);
+            } else if (currentImage) {
+                // If there's an image but no text, use default message
+                sendMessage("Find products like this image", currentImage);
             }
         }
     });
