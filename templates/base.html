@@ -103,6 +103,35 @@
             </a>
           </li>
 
+          <!-- For admin users only, add A/B Testing -->
+          {% if 'user_id' in session and session['user_id'] == 1 %}
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              href="#"
+              id="abTestingDropdown"
+              role="button"
+              data-toggle="dropdown"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <i class="fas fa-flask"></i> A/B Testing
+            </a>
+            <div class="dropdown-menu" aria-labelledby="abTestingDropdown">
+              <a class="dropdown-item" href="{{ url_for('ab_testing_dashboard') }}">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+              </a>
+              <a class="dropdown-item" href="{{ url_for('ab_testing_explanation') }}">
+                <i class="fas fa-question-circle"></i> How It Works
+              </a>
+              <div class="dropdown-divider"></div>
+              <a class="dropdown-item bg-primary text-white" href="#" data-toggle="modal" data-target="#createTestModal">
+                <i class="fas fa-plus"></i> Create New Test
+              </a>
+            </div>
+          </li>
+          {% endif %}
+
           <li class="nav-item">
             <a class="nav-link" href="#" id="settingsLink"
               ><i class="fas fa-cog"></i> Settings</a

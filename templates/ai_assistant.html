@@ -489,7 +489,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Add product carousel
-    function addProductCarousel(products) {
+    function addProductCarouselFixed(products) {
         if (!products || products.length === 0) return;
         
         const carouselDiv = document.createElement('div');
@@ -499,16 +499,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const productCard = document.createElement('div');
             productCard.classList.add('card', 'product-card');
             
+            // Use pre-encoded URL if available, otherwise encode it ourselves
+            const productUrl = product.ProductURL || `/view_product/${encodeURIComponent(product.Name)}`;
+            
             // Create product card content
             productCard.innerHTML = `
-                <a href="/view_product/${encodeURIComponent(product.Name)}">
+                <a href="${productUrl}">
                     <img src="${product.ImageURL}" class="card-img-top" alt="${product.Name}">
                 </a>
                 <div class="card-body p-2">
                     <h6 class="card-title" style="font-size: 0.9rem; height: 40px; overflow: hidden;">${product.Name}</h6>
                     <p class="card-text mb-1"><small>Brand: ${product.Brand}</small></p>
                     <p class="card-text mb-1"><small>Rating: ${product.Rating} ★</small></p>
-                    <a href="/view_product/${encodeURIComponent(product.Name)}" class="btn btn-sm btn-primary">View Details</a>
+                    <a href="${productUrl}" class="btn btn-sm btn-primary">View Details</a>
                 </div>
             `;
             
@@ -624,6 +627,9 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('image_weight', '50');
         }
         
+        // Show typing indicator
+        const typingIndicator = showTypingIndicator();
+        
         // Send request to appropriate endpoint
         fetch(endpoint, {
             method: 'POST',
@@ -650,13 +656,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     const brandElement = card.querySelector('.card-text');
                     const ratingElement = card.querySelectorAll('.card-text')[1];
                     const imageElement = card.querySelector('img');
+                    // Get the correct URL from the view details link
+                    const viewDetailsLink = card.querySelector('a[href^="/view_product/"]');
                     
                     if (nameElement && imageElement) {
+                        let productName = nameElement.textContent.trim();
+                        // Extract the correctly encoded product name from the URL if possible
+                        let productUrl = '';
+                        if (viewDetailsLink) {
+                            productUrl = viewDetailsLink.getAttribute('href');
+                            // The URL is already properly encoded
+                        } else {
+                            // Fallback: Just encode the name ourselves
+                            productUrl = `/view_product/${encodeURIComponent(productName)}`;
+                        }
+                        
                         const product = {
-                            Name: nameElement.textContent.trim(),
+                            Name: productName,
                             Brand: brandElement ? brandElement.textContent.replace('Brand:', '').trim() : 'Unknown',
                             Rating: ratingElement ? parseFloat(ratingElement.textContent.replace('Rating:', '').replace('★', '').trim()) : 0,
-                            ImageURL: imageElement.src
+                            ImageURL: imageElement.src,
+                            // Store the properly encoded URL
+                            ProductURL: productUrl
                         };
                         
                         products.push(product);
@@ -673,8 +694,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Add assistant response
                 addMessage(responseText, 'assistant');
                 
-                // Add product carousel
-                addProductCarousel(products);
+                // Add product carousel with FIXED URL generation
+                addProductCarouselFixed(products);
             } else {
                 // No products found
                 addMessage("I couldn't find any products that match your image. Could you try a different image or search term?", 'assistant');
