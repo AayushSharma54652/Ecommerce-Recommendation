@@ -171,6 +171,8 @@
           {% endif %}
         </ul>
       </div>
+
+      
     </nav>
 
     <!-- Flash messages -->
@@ -191,7 +193,7 @@
           <div class="col-md-12">
             <hr class="bg-light" />
             <p class="text-center">
-              © 2024 Ecommerce Recommendation System. All Rights Reserved.
+              © 2025 Ecommerce Recommendation System. All Rights Reserved.
             </p>
           </div>
         </div>
@@ -286,6 +288,11 @@
         </div>
       </div>
     </div>
+
+    <!-- Include A/B Testing Modal for admin users -->
+    {% if 'user_id' in session and session['user_id'] == 1 %}
+      {% include 'create_test_modal.html' %}
+    {% endif %}
 
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
