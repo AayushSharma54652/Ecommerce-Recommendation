@@ -3,11 +3,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Embedding, Flatten, Dense, Concatenate, Dropout
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam  # Standard optimizer, not legacy
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import os
 import joblib
+import json
 from datetime import datetime
 
 class NeuralCollaborativeFiltering:
@@ -30,7 +31,8 @@ class NeuralCollaborativeFiltering:
         
         # Model paths
         self.model_dir = 'models'
-        self.ncf_model_path = os.path.join(self.model_dir, 'ncf_model.keras')  # Added .keras extension
+        self.weights_path = os.path.join(self.model_dir, 'ncf_weights.h5')
+        self.model_config_path = os.path.join(self.model_dir, 'ncf_model_config.json')
         self.user_encoder_path = os.path.join(self.model_dir, 'user_encoder.pkl')
         self.item_encoder_path = os.path.join(self.model_dir, 'item_encoder.pkl')
         
@@ -41,6 +43,8 @@ class NeuralCollaborativeFiltering:
         self.user_encoder = None
         self.item_encoder = None
         self.model = None
+        self.num_users = 0
+        self.num_items = 0
         
         # Load or train model
         self._load_or_train_model()
@@ -77,6 +81,10 @@ class NeuralCollaborativeFiltering:
         # Extract user and item ids
         user_ids = self.user_encoder.fit_transform(filtered_activity['user_id'])
         item_ids = self.item_encoder.fit_transform(filtered_activity['product_name'])
+        
+        # Store counts for model building
+        self.num_users = len(self.user_encoder.classes_)
+        self.num_items = len(self.item_encoder.classes_)
         
         # Create implicit feedback based on activity type
         # Define weights for different activity types
@@ -162,12 +170,29 @@ class NeuralCollaborativeFiltering:
         # Create and compile the model
         model = Model(inputs=[user_input, item_input], outputs=output)
         model.compile(
-            optimizer=Adam(learning_rate=0.001),
+            optimizer=Adam(learning_rate=0.001),  # Standard Adam optimizer
             loss='binary_crossentropy',
             metrics=['accuracy']
         )
         
         return model
+    
+    def _save_model(self):
+        """Save model weights and configuration separately for compatibility"""
+        # Save model weights
+        self.model.save_weights(self.weights_path)
+        
+        # Save model configuration
+        model_config = self.model.get_config()
+        with open(self.model_config_path, 'w') as f:
+            json.dump({
+                'num_users': self.num_users,
+                'num_items': self.num_items,
+                'embedding_dim': self.embedding_dim
+            }, f)
+        
+        print(f"Model weights saved to {self.weights_path}")
+        print(f"Model configuration saved to {self.model_config_path}")
     
     def _train_model(self):
         """Train the NCF model on user activity data"""
@@ -178,14 +203,10 @@ class NeuralCollaborativeFiltering:
             print("Could not prepare training data")
             return
         
-        # Get number of users and items
-        num_users = len(self.user_encoder.classes_)
-        num_items = len(self.item_encoder.classes_)
-        
-        print(f"Training NCF model with {num_users} users and {num_items} items")
+        print(f"Training NCF model with {self.num_users} users and {self.num_items} items")
         
         # Build model
-        self.model = self._build_model(num_users, num_items)
+        self.model = self._build_model(self.num_users, self.num_items)
         
         # Split data into train and validation sets
         user_ids_train, user_ids_val, item_ids_train, item_ids_val, labels_train, labels_val = train_test_split(
@@ -202,20 +223,48 @@ class NeuralCollaborativeFiltering:
             verbose=1
         )
         
-        # Save model with explicit format
-        self.model.save(self.ncf_model_path, save_format='keras')
-        print(f"Model trained and saved to {self.ncf_model_path}")
+        # Save model weights and configuration
+        self._save_model()
     
     def _load_or_train_model(self):
-        """Load pre-trained model if it exists, otherwise train new one"""
+        """Load pre-trained model weights if they exist, otherwise train new model"""
         try:
-            # Try to load pre-trained model
-            self.model = tf.keras.models.load_model(self.ncf_model_path)
-            self.user_encoder = joblib.load(self.user_encoder_path)
-            self.item_encoder = joblib.load(self.item_encoder_path)
-            print("Loaded pre-trained NCF model")
-        except (FileNotFoundError, IOError, ValueError):  # Added ValueError to catch format issues
-            print("No pre-trained NCF model found or incompatible format, training new model...")
+            # Check if model files exist
+            if (os.path.exists(self.weights_path) and 
+                os.path.exists(self.model_config_path) and 
+                os.path.exists(self.user_encoder_path) and 
+                os.path.exists(self.item_encoder_path)):
+                
+                try:
+                    # Load encoders
+                    self.user_encoder = joblib.load(self.user_encoder_path)
+                    self.item_encoder = joblib.load(self.item_encoder_path)
+                    
+                    # Load model configuration
+                    with open(self.model_config_path, 'r') as f:
+                        config = json.load(f)
+                    
+                    self.num_users = config['num_users']
+                    self.num_items = config['num_items']
+                    self.embedding_dim = config.get('embedding_dim', 32)
+                    
+                    # Rebuild model architecture
+                    self.model = self._build_model(self.num_users, self.num_items)
+                    
+                    # Load weights
+                    self.model.load_weights(self.weights_path)
+                    
+                    print("Loaded pre-trained NCF model weights")
+                except Exception as e:
+                    print(f"Error loading pre-trained NCF model: {e}")
+                    print("Training a new model instead")
+                    self._train_model()
+            else:
+                print("No pre-trained NCF model found, training new model...")
+                self._train_model()
+        except Exception as e:
+            print(f"Unexpected error in model initialization: {e}")
+            print("Training new model...")
             self._train_model()
     
     def get_recommendations(self, user_id, top_n=10):

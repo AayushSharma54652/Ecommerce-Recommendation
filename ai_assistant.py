@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import re
 import spacy
 import nltk
@@ -10,9 +8,8 @@ from nltk.corpus import stopwords
 import json
 import os
 import datetime
-from tensorflow.keras.models import load_model, Model
-from tensorflow.keras.layers import Input, Embedding, LSTM, Dense, Dropout, Concatenate
-import tensorflow as tf
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Download required NLTK resources
 try:
@@ -475,7 +472,8 @@ class AISalesAssistant:
             # Search for products
             try:
                 if self.nlp_search is not None:
-                    search_results, _ = self.nlp_search.enhanced_search(search_query, user_id=user_id, top_n=top_n)
+                    # Modified to use direct search without db access
+                    search_results, _ = self._safe_nlp_search(search_query, user_id, top_n)
                     response['products'] = search_results.to_dict('records') if not search_results.empty else []
                 elif self.recommendation_system is not None:
                     recommended_products = self.recommendation_system.get_recommendations(user_id, top_n=top_n)
@@ -533,7 +531,7 @@ class AISalesAssistant:
                     # Try to find similar products
                     try:
                         if self.nlp_search is not None:
-                            search_results, _ = self.nlp_search.enhanced_search(search_query, user_id=user_id, top_n=3)
+                            search_results, _ = self._safe_nlp_search(search_query, user_id, 3)
                             response['products'] = search_results.to_dict('records') if not search_results.empty else []
                     except Exception as e:
                         print(f"Error in product info search: {e}")
@@ -569,7 +567,7 @@ class AISalesAssistant:
                     # Try to find similar products
                     try:
                         if self.nlp_search is not None:
-                            search_results, _ = self.nlp_search.enhanced_search(search_query, user_id=user_id, top_n=3)
+                            search_results, _ = self._safe_nlp_search(search_query, user_id, 3)
                             response['products'] = search_results.to_dict('records') if not search_results.empty else []
                     except Exception as e:
                         print(f"Error in price query search: {e}")
@@ -618,7 +616,7 @@ class AISalesAssistant:
                     # Try to find similar products
                     try:
                         if self.nlp_search is not None:
-                            search_results, _ = self.nlp_search.enhanced_search(search_query, user_id=user_id, top_n=3)
+                            search_results, _ = self._safe_nlp_search(search_query, user_id, 3)
                             response['products'] = search_results.to_dict('records') if not search_results.empty else []
                     except Exception as e:
                         print(f"Error in opinion search: {e}")
@@ -630,3 +628,65 @@ class AISalesAssistant:
             response['text'] = "I'm here to help with your shopping. You can ask me to find products, get information about them, or get recommendations based on your preferences."
         
         return response
+    
+    def _safe_nlp_search(self, query, user_id=None, top_n=10):
+        """
+        A safe wrapper around NLP search that doesn't rely on database access
+        """
+        try:
+            # Use the direct search method without database filtering
+            if hasattr(self.nlp_search, 'semantic_search'):
+                results = self.nlp_search.semantic_search(query, top_n=top_n*2)
+                
+                # Extract query info using process_query
+                if hasattr(self.nlp_search, 'process_query'):
+                    query_info = self.nlp_search.process_query(query)
+                else:
+                    query_info = {
+                        'query': query,
+                        'attributes': {},
+                        'original_query': query
+                    }
+                
+                # Apply attribute filtering manually if possible
+                if hasattr(self.nlp_search, '_apply_attribute_filters'):
+                    filtered_results = self.nlp_search._apply_attribute_filters(results, query_info['attributes'])
+                    return filtered_results.sort_values('similarity', ascending=False).head(top_n), query_info
+                
+                return results.head(top_n), query_info
+            else:
+                # Fallback to basic search
+                search_tokens = query.lower().split()
+                if 'search_text' in self.product_data.columns:
+                    search_col = 'search_text'
+                else:
+                    search_col = 'Name'
+                
+                matches = self.product_data[
+                    self.product_data[search_col].fillna('').str.lower().apply(
+                        lambda text: any(token in text for token in search_tokens)
+                    )
+                ]
+                
+                # Add a dummy similarity score
+                if not matches.empty:
+                    matches['similarity'] = 0.8
+                
+                query_info = {
+                    'query': query,
+                    'attributes': {},
+                    'original_query': query
+                }
+                
+                return matches.head(top_n), query_info
+                
+        except Exception as e:
+            print(f"Error in safe NLP search: {e}")
+            # Return empty DataFrame with required columns and query info on error
+            empty_df = pd.DataFrame(columns=['Name', 'Brand', 'ImageURL', 'Rating', 'ReviewCount', 'similarity'])
+            query_info = {
+                'query': query,
+                'attributes': {},
+                'original_query': query
+            }
+            return empty_df, query_info

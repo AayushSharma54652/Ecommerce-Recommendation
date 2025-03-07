@@ -17,7 +17,6 @@ from nlp_search import NLPSearch  # Updated version from previous response
 from image_feature_extractor import ImageFeatureExtractor
 from werkzeug.utils import secure_filename
 from multimodal_search import MultimodalSearch
-from ai_assistant import AISalesAssistant
 from flask import request, jsonify
 
 app = Flask(__name__)
@@ -127,6 +126,8 @@ with app.app_context():
 
     # AI Sales Assistant
     try:
+        # Import the fixed version
+        from ai_assistant import AISalesAssistant
         ai_assistant = AISalesAssistant(
             product_data=train_data,
             nlp_search=nlp_search,
@@ -134,7 +135,7 @@ with app.app_context():
             multimodal_search=multimodal_search,
             recommendation_system=recommendation_system
         )
-        print("Initialized AI Sales Assistant")
+        print("Initialized Fixed AI Sales Assistant")
     except Exception as e:
         import traceback
         print(f"Error initializing AI Assistant: {e}")
@@ -816,14 +817,18 @@ def ai_assistant_chat():
         user_id = session.get('user_id')
         response = ai_assistant.process_message(user_id, message)
         
-        # Record the interaction
-        new_activity = UserActivity(
-            user_id=user_id,
-            product_name=message[:100],
-            activity_type='ai_assistant'
-        )
-        db.session.add(new_activity)
-        db.session.commit()
+        # Record the interaction in the database
+        try:
+            new_activity = UserActivity(
+                user_id=user_id,
+                product_name=message[:100],
+                activity_type='ai_assistant'
+            )
+            db.session.add(new_activity)
+            db.session.commit()
+        except Exception as db_error:
+            print(f"Failed to log user activity, but continuing: {db_error}")
+            # Continue even if recording fails
         
         return jsonify({
             'success': True,
@@ -831,11 +836,13 @@ def ai_assistant_chat():
         })
     except Exception as e:
         print(f"Error processing AI assistant message: {e}")
+        import traceback
+        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'message': str(e),
             'response': {
-                'text': "I encountered an error processing your message. Could you try again?",
+                'text': "I encountered an error processing your message. Could you try again with different wording?",
                 'products': []
             }
         }), 500
@@ -887,6 +894,7 @@ def ai_assistant_suggestions():
         })
     except Exception as e:
         print(f"Error generating AI assistant suggestions: {e}")
+        # Return default suggestions on error
         return jsonify({
             'success': False,
             'suggestions': [
