@@ -18,6 +18,8 @@ from image_feature_extractor import ImageFeatureExtractor
 from werkzeug.utils import secure_filename
 from multimodal_search import MultimodalSearch
 from flask import request, jsonify
+from ab_testing import ABTestingManager
+
 
 app = Flask(__name__)
 
@@ -143,6 +145,18 @@ with app.app_context():
         ai_assistant = None
         print("AI Assistant functionality may be limited")
 
+
+        # Initialize A/B testing manager
+    try:
+        ab_testing_manager = ABTestingManager(model_dir='models')
+        print("Initialized A/B Testing Manager")
+    except Exception as e:
+        import traceback
+        print(f"Error initializing A/B Testing Manager: {e}")
+        print(traceback.format_exc())
+        ab_testing_manager = None
+        print("A/B Testing functionality may be limited")
+
     
 
 UPLOAD_FOLDER = 'static/uploads'
@@ -192,6 +206,42 @@ def refresh_recommendation_models():
     recommendation_system.refresh_models(user_activity_data)
     print("Recommendation models refreshed with updated user data")
 
+
+def enhanced_recommendations_with_ab_testing(train_data, target_user_id, item_name=None, top_n=10):
+    """Get enhanced recommendations with A/B testing integration"""
+    global recommendation_system, ab_testing_manager
+    
+    # Check if A/B testing is available and user is logged in
+    if ab_testing_manager is not None and target_user_id is not None:
+        # Assign user to test variants if needed
+        ab_testing_manager.assign_user_to_variant(target_user_id)
+        
+        # Get weights for the user
+        weights = ab_testing_manager.get_user_weights(target_user_id)
+        
+        # Apply weights temporarily for this user
+        original_weights = recommendation_system.ensemble_weights.copy()
+        recommendation_system.set_ensemble_weights(
+            content_based=weights.get('content_based', 0.3),
+            collaborative=weights.get('collaborative', 0.2),
+            neural=weights.get('neural', 0.5)
+        )
+        
+        # Record an impression for all active tests the user is assigned to
+        ab_testing_manager.record_metric(target_user_id, 'impression')
+        
+        # Get recommendations with user-specific weights
+        recommendations = recommendation_system.get_recommendations(target_user_id, item_name, top_n)
+        
+        # Restore original weights
+        recommendation_system.ensemble_weights = original_weights
+        
+        return recommendations
+    else:
+        # Fall back to standard recommendations if A/B testing is unavailable
+        return recommendation_system.get_recommendations(target_user_id, item_name, top_n)
+
+
 # Routes
 random_image_urls = [
     "static/img/img_1.png",
@@ -210,18 +260,21 @@ random_image_urls = [
 def parse_iso_datetime(value):
     if value and isinstance(value, str):
         try:
-            return datetime.datetime.fromisoformat(value)
-        except ValueError:
+            return datetime.fromisoformat(value)
+        except (ValueError, AttributeError):
             # Fall back for older Python versions or different formats
-            return datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f")
+            try:
+                return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%f")
+            except ValueError:
+                # Try without microseconds
+                return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
     return value
 
 @app.template_filter('format_datetime')
 def format_datetime(value):
-    if value and isinstance(value, datetime.datetime):
+    if value and isinstance(value, datetime):
         return value.strftime('%b %d, %I:%M %p')
     return value
-
 
 @app.route("/")
 def index():
@@ -315,6 +368,7 @@ def logout():
     session.pop('username', None)
     return redirect(url_for('index'))
 
+
 @app.route("/recommendations", methods=['POST', 'GET'])
 def recommendations():
     if request.method == 'POST':
@@ -330,7 +384,8 @@ def recommendations():
             db.session.add(new_activity)
             db.session.commit()
             
-            recommended_products = enhanced_recommendations(
+            # Use A/B testing enhanced recommendations
+            recommended_products = enhanced_recommendations_with_ab_testing(
                 train_data, session['user_id'], item_name=prod, top_n=nbr
             )
             
@@ -361,6 +416,7 @@ def recommendations():
     
     return render_template('main.html', content_based_rec=pd.DataFrame(), truncate=truncate)
 
+
 @app.route("/view_product/<path:product_name>")
 def view_product(product_name):
     if 'user_id' in session:
@@ -375,6 +431,10 @@ def view_product(product_name):
         user_activity_count = UserActivity.query.filter_by(user_id=session['user_id']).count()
         if user_activity_count % 5 == 0:  # Refresh every 5 activities
             refresh_recommendation_models()
+        
+        # Record click event for A/B testing
+        if ab_testing_manager is not None:
+            ab_testing_manager.record_metric(session['user_id'], 'click')
     
     product = train_data[train_data['Name'] == product_name].iloc[0].to_dict() if not train_data[train_data['Name'] == product_name].empty else None
     if not product:
@@ -382,6 +442,7 @@ def view_product(product_name):
     
     price = random.choice([40, 50, 60, 70, 100, 122, 106, 50, 30, 50])
     return render_template('product_detail.html', product=product, price=price)
+
 
 @app.route('/profile')
 @login_required
@@ -450,8 +511,29 @@ def recommendation_feedback():
     db.session.add(feedback)
     db.session.commit()
     
+    # Record rating for A/B testing
+    if ab_testing_manager is not None:
+        ab_testing_manager.record_metric(session['user_id'], 'rating', rating)
+    
     flash('Thank you for your feedback!', 'success')
     return redirect(request.referrer or url_for('index'))
+
+# Auto-optimize weights periodically
+@app.before_request
+def auto_optimize_ab_testing():
+    # Run optimization once per day (check based on current time)
+    now = datetime.now()
+    
+    # Only run at midnight (hour 0)
+    if now.hour == 0 and now.minute < 10:  # Run in first 10 minutes of midnight
+        try:
+            if ab_testing_manager is not None and recommendation_system is not None:
+                # Automatically optimize weights based on test results
+                ab_testing_manager.auto_optimize_weights(recommendation_system)
+                print(f"[{now}] Auto-optimized recommendation weights based on A/B test results")
+        except Exception as e:
+            print(f"Error in auto-optimization: {e}")
+            
 
 @app.route('/recommendation_visualization')
 def recommendation_visualization():
@@ -909,6 +991,241 @@ def ai_assistant_suggestions():
 def ai_assistant_visualization():
     """Show visualization of how the AI Assistant works"""
     return render_template('ai_assistant_visualization.html')
+
+
+
+@app.route("/ab_testing_dashboard")
+@login_required
+def ab_testing_dashboard():
+    """Admin dashboard for A/B testing"""
+    if session['user_id'] != 1:  # Only admin can access
+        flash('You do not have permission to access this page', 'warning')
+        return redirect(url_for('index'))
+    
+    if ab_testing_manager is None:
+        flash('A/B Testing functionality is currently unavailable', 'warning')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Get all tests
+    all_tests = ab_testing_manager.get_all_tests()
+    active_tests = ab_testing_manager.get_active_tests()
+    
+    # Convert tests to a list for easier rendering
+    tests_list = [test.to_dict() for test in all_tests.values()]
+    
+    # Sort by start_date descending
+    tests_list.sort(key=lambda x: x['start_date'], reverse=True)
+    
+    return render_template('ab_testing_dashboard.html', 
+                           tests=tests_list, 
+                           active_count=len(active_tests),
+                           total_count=len(all_tests))
+
+@app.route("/ab_testing_explanation")
+def ab_testing_explanation():
+    """Educational page about A/B testing"""
+    return render_template('ab_testing_explanation.html')
+
+@app.route("/ab_testing/create", methods=['POST'])
+@login_required
+def create_ab_test():
+    """Create a new A/B test"""
+    if session['user_id'] != 1:  # Only admin can access
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    if ab_testing_manager is None:
+        return jsonify({'success': False, 'message': 'A/B Testing functionality is unavailable'}), 500
+    
+    try:
+        # Get form data
+        name = request.form.get('name')
+        description = request.form.get('description')
+        start_date_str = request.form.get('start_date')
+        end_date_str = request.form.get('end_date')
+        variant_count = int(request.form.get('variant_count', 2))
+        
+        # Validate required fields
+        if not all([name, description, start_date_str, end_date_str]):
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+        
+        # Parse dates
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        
+        # Create variant configurations
+        variants = []
+        
+        # Control variant (default weights)
+        variants.append({
+            'id': 'control',
+            'name': 'Control',
+            'description': 'Default weight configuration',
+            'weights': {
+                'content_based': 0.3,
+                'collaborative': 0.2,
+                'neural': 0.5
+            }
+        })
+        
+        # Create test variants with different weight configurations
+        for i in range(1, variant_count):
+            # Generate different weights for each variant
+            content_weight = float(request.form.get(f'content_weight_{i}', 0.33))
+            collab_weight = float(request.form.get(f'collab_weight_{i}', 0.33))
+            neural_weight = float(request.form.get(f'neural_weight_{i}', 0.34))
+            
+            # Normalize weights to sum to 1
+            total = content_weight + collab_weight + neural_weight
+            if total > 0:
+                content_weight /= total
+                collab_weight /= total
+                neural_weight /= total
+            else:
+                # Default to equal weights if all are zero
+                content_weight = collab_weight = neural_weight = 1/3
+            
+            variants.append({
+                'id': f'variant_{i}',
+                'name': f'Variant {i}',
+                'description': f'Alternative weight configuration {i}',
+                'weights': {
+                    'content_based': content_weight,
+                    'collaborative': collab_weight,
+                    'neural': neural_weight
+                }
+            })
+        
+        # Create the test
+        test_id = ab_testing_manager.create_test(
+            name=name,
+            description=description,
+            variants=variants,
+            start_date=start_date,
+            end_date=end_date,
+            status='active'
+        )
+        
+        flash(f'Successfully created A/B test: {name}', 'success')
+        return jsonify({'success': True, 'test_id': test_id}), 200
+    
+    except Exception as e:
+        import traceback
+        print(f"Error creating A/B test: {e}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route("/ab_testing/view/<test_id>")
+@login_required
+def view_ab_test(test_id):
+    """View details of an A/B test"""
+    if session['user_id'] != 1:  # Only admin can access
+        flash('You do not have permission to access this page', 'warning')
+        return redirect(url_for('index'))
+    
+    if ab_testing_manager is None:
+        flash('A/B Testing functionality is currently unavailable', 'warning')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Get the test
+    test = ab_testing_manager.get_test(test_id)
+    if not test:
+        flash('Test not found', 'warning')
+        return redirect(url_for('ab_testing_dashboard'))
+    
+    # Generate report
+    report = ab_testing_manager.generate_report(test_id)
+    
+    return render_template('ab_test_detail.html', test=test.to_dict(), report=report)
+
+@app.route("/ab_testing/update/<test_id>", methods=['POST'])
+@login_required
+def update_ab_test(test_id):
+    """Update an A/B test"""
+    if session['user_id'] != 1:  # Only admin can access
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    if ab_testing_manager is None:
+        return jsonify({'success': False, 'message': 'A/B Testing functionality is unavailable'}), 500
+    
+    try:
+        # Get form data
+        status = request.form.get('status')
+        end_date_str = request.form.get('end_date')
+        
+        # Parse end date if provided
+        end_date = None
+        if end_date_str:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        
+        # Update the test
+        updates = {}
+        if status:
+            updates['status'] = status
+        if end_date:
+            updates['end_date'] = end_date
+        
+        if updates:
+            success = ab_testing_manager.update_test(test_id, **updates)
+            if success:
+                return jsonify({'success': True}), 200
+            else:
+                return jsonify({'success': False, 'message': 'Test not found'}), 404
+        else:
+            return jsonify({'success': False, 'message': 'No updates provided'}), 400
+    
+    except Exception as e:
+        import traceback
+        print(f"Error updating A/B test: {e}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route("/ab_testing/delete/<test_id>", methods=['POST'])
+@login_required
+def delete_ab_test(test_id):
+    """Delete an A/B test"""
+    if session['user_id'] != 1:  # Only admin can access
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    if ab_testing_manager is None:
+        return jsonify({'success': False, 'message': 'A/B Testing functionality is unavailable'}), 500
+    
+    success = ab_testing_manager.delete_test(test_id)
+    if success:
+        flash('Test deleted successfully', 'success')
+        return jsonify({'success': True}), 200
+    else:
+        return jsonify({'success': False, 'message': 'Test not found'}), 404
+
+@app.route("/ab_testing/apply_best/<test_id>", methods=['POST'])
+@login_required
+def apply_best_variant(test_id):
+    """Apply the best-performing variant as the default weights"""
+    if session['user_id'] != 1:  # Only admin can access
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    if ab_testing_manager is None or recommendation_system is None:
+        return jsonify({'success': False, 'message': 'Required functionality is unavailable'}), 500
+    
+    test = ab_testing_manager.get_test(test_id)
+    if not test:
+        return jsonify({'success': False, 'message': 'Test not found'}), 404
+    
+    primary_metric = request.form.get('primary_metric', 'avg_rating')
+    best_variant = test.get_best_variant(primary_metric)
+    
+    if not best_variant or 'weights' not in best_variant:
+        return jsonify({'success': False, 'message': 'No valid best variant found'}), 400
+    
+    # Apply the weights
+    weights = best_variant['weights']
+    recommendation_system.set_ensemble_weights(
+        content_based=weights.get('content_based', 0.3),
+        collaborative=weights.get('collaborative', 0.2),
+        neural=weights.get('neural', 0.5)
+    )
+    
+    flash(f'Successfully applied weights from {best_variant["name"]}', 'success')
+    return jsonify({'success': True, 'variant': best_variant}), 200
 
 
 if __name__ == '__main__':
