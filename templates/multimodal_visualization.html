@@ -85,57 +85,63 @@
                         
                         <!-- Flow diagram -->
                         <div class="my-5">
-                            <svg width="100%" height="220" viewBox="0 0 1000 220" xmlns="http://www.w3.org/2000/svg">
-                                <!-- Input section -->
-                                <rect x="10" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
-                                <text x="85" y="35" text-anchor="middle" font-size="14" font-weight="bold">Image Input</text>
-                                <text x="85" y="60" text-anchor="middle" font-size="12">Visual Features</text>
-                                <path d="M 160 50 L 200 50" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <rect x="10" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
-                                <text x="85" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Input</text>
-                                <text x="85" y="180" text-anchor="middle" font-size="12">Semantic Features</text>
-                                <path d="M 160 170 L 200 170" stroke="#2E7D32" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <!-- Processing section -->
-                                <rect x="200" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
-                                <text x="275" y="35" text-anchor="middle" font-size="14" font-weight="bold">Image Analysis</text>
-                                <text x="275" y="60" text-anchor="middle" font-size="12">MobileNetV2</text>
-                                <path d="M 350 50 L 390 50" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <rect x="200" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
-                                <text x="275" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Analysis</text>
-                                <text x="275" y="180" text-anchor="middle" font-size="12">BERT + spaCy</text>
-                                <path d="M 350 170 L 390 170" stroke="#2E7D32" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <!-- Feature vectors -->
-                                <rect x="390" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
-                                <text x="465" y="35" text-anchor="middle" font-size="14" font-weight="bold">Visual Embeddings</text>
-                                <text x="465" y="60" text-anchor="middle" font-size="12">1,280-dim Vector</text>
-                                <path d="M 465 90 L 465 120 L 580 120 L 580 70" stroke="#673AB7" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <rect x="390" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
-                                <text x="465" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Embeddings</text>
-                                <text x="465" y="180" text-anchor="middle" font-size="12">Semantic Vector</text>
-                                <path d="M 465 130 L 465 100 L 580 100 L 580 130" stroke="#673AB7" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <!-- Fusion section -->
-                                <rect x="580" y="70" width="150" height="80" rx="10" fill="#EDE7F6" stroke="#4527A0" stroke-width="2"/>
-                                <text x="655" y="95" text-anchor="middle" font-size="14" font-weight="bold">Multimodal Fusion</text>
-                                <text x="655" y="120" text-anchor="middle" font-size="12">Weighted Ensemble</text>
-                                <path d="M 730 110 L 770 110" stroke="#4527A0" stroke-width="2" marker-end="url(#arrow)"/>
-                                
-                                <!-- Results section -->
-                                <rect x="770" y="70" width="150" height="80" rx="10" fill="#FFF3E0" stroke="#E65100" stroke-width="2"/>
-                                <text x="845" y="95" text-anchor="middle" font-size="14" font-weight="bold">Ranked Results</text>
-                                <text x="845" y="120" text-anchor="middle" font-size="12">Personalized Products</text>
-                                
-                                <!-- Arrows -->
+                            <svg width="100%" height="260" viewBox="0 0 1000 260" xmlns="http://www.w3.org/2000/svg">
+                                <!-- Definitions for the arrow marker -->
                                 <defs>
                                     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
                                         <path d="M0,0 L0,6 L9,3 z" fill="#000"/>
                                     </marker>
                                 </defs>
+
+                                <!-- Image Input Section -->
+                                <rect x="10" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+                                <text x="85" y="35" text-anchor="middle" font-size="14" font-weight="bold">Image Input</text>
+                                <text x="85" y="60" text-anchor="middle" font-size="12">Visual Features</text>
+                                <path d="M 160 50 L 200 50" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Text Input Section -->
+                                <rect x="10" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+                                <text x="85" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Input</text>
+                                <text x="85" y="180" text-anchor="middle" font-size="12">Semantic Features</text>
+                                <path d="M 160 170 L 200 170" stroke="#2E7D32" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Image Analysis Section -->
+                                <rect x="200" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+                                <text x="275" y="35" text-anchor="middle" font-size="14" font-weight="bold">Image Analysis</text>
+                                <text x="275" y="60" text-anchor="middle" font-size="12">MobileNetV2</text>
+                                <path d="M 350 50 L 390 50" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Text Analysis Section -->
+                                <rect x="200" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+                                <text x="275" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Analysis</text>
+                                <text x="275" y="180" text-anchor="middle" font-size="12">BERT + spaCy</text>
+                                <path d="M 350 170 L 390 170" stroke="#2E7D32" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Visual Embeddings Section -->
+                                <rect x="390" y="10" width="150" height="80" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+                                <text x="465" y="35" text-anchor="middle" font-size="14" font-weight="bold">Visual Embeddings</text>
+                                <text x="465" y="60" text-anchor="middle" font-size="12">1,280-dim Vector</text>
+                                <path d="M 540 50 L 580 100" stroke="#673AB7" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Text Embeddings Section -->
+                                <rect x="390" y="130" width="150" height="80" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="2"/>
+                                <text x="465" y="155" text-anchor="middle" font-size="14" font-weight="bold">Text Embeddings</text>
+                                <text x="465" y="180" text-anchor="middle" font-size="12">Semantic Vector</text>
+                                <path d="M 540 170 L 580 120" stroke="#673AB7" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Multimodal Fusion Section -->
+                                <rect x="580" y="90" width="150" height="80" rx="10" fill="#EDE7F6" stroke="#4527A0" stroke-width="2"/>
+                                <text x="655" y="115" text-anchor="middle" font-size="14" font-weight="bold">Multimodal Fusion</text>
+                                <text x="655" y="140" text-anchor="middle" font-size="12">Weighted Ensemble</text>
+                                <path d="M 730 130 L 770 130" stroke="#4527A0" stroke-width="2" marker-end="url(#arrow)"/>
+
+                                <!-- Ranked Results Section -->
+                                <rect x="770" y="90" width="150" height="80" rx="10" fill="#FFF3E0" stroke="#E65100" stroke-width="2"/>
+                                <text x="845" y="115" text-anchor="middle" font-size="14" font-weight="bold">Ranked Results</text>
+                                <text x="845" y="140" text-anchor="middle" font-size="12">Personalized Products</text>
+
+                                <!-- Example Text -->
+                                <text x="500" y="240" text-anchor="middle" font-size="14" font-style="italic">Example: "Find a dress like this but in red color"</text>
                             </svg>
                         </div>
                         

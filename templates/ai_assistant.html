@@ -347,9 +347,18 @@
                     </div>
                 </div>
                 <div class="card-footer bg-light">
-                    <small class="text-muted">
-                        <i class="fas fa-info-circle"></i> Your assistant learns from your interactions to provide better recommendations over time.
-                    </small>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle"></i> Your assistant learns from your interactions to provide better recommendations over time.
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-right">
+                            <a href="{{ url_for('ai_assistant_visualization') }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-lightbulb mr-1"></i> How it works
+                            </a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -358,8 +367,11 @@
     <div class="row mb-5">
         <div class="col-md-8 offset-md-2">
             <div class="card">
-                <div class="card-header bg-light">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-lightbulb mr-2"></i> How Your Shopping Assistant Works</h5>
+                    <a href="{{ url_for('ai_assistant_visualization') }}" class="btn btn-info btn-sm">
+                        <i class="fas fa-external-link-alt mr-1"></i> See detailed visualization
+                    </a>
                 </div>
                 <div class="card-body">
                     <div class="row">
