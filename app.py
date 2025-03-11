@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify
+from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
 import random
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import os
 import tensorflow as tf
 import warnings
+import numpy as np
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -61,6 +62,85 @@ class RecommendationFeedback(db.Model):
     rating = db.Column(db.Integer)  # User feedback rating (1-5)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     comments = db.Column(db.Text, nullable=True)
+
+# Add these models to your app.py file in the model definitions section
+
+class CartItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('signup.id'), nullable=False)
+    product_name = db.Column(db.String(255), nullable=False)
+    quantity = db.Column(db.Integer, default=1)
+    price = db.Column(db.Float, nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_name': self.product_name,
+            'quantity': self.quantity,
+            'price': self.price,
+            'total': round(self.quantity * self.price, 2)
+        }
+
+class Order(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('signup.id'), nullable=False)
+    order_date = db.Column(db.DateTime, default=datetime.utcnow)
+    total_amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(50), default='pending')  # pending, paid, shipped, delivered
+    payment_id = db.Column(db.String(100), nullable=True)
+    shipping_address = db.Column(db.Text, nullable=True)
+    
+    items = db.relationship('OrderItem', backref='order', lazy=True, cascade="all, delete-orphan")
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'order_date': self.order_date,
+            'total_amount': self.total_amount,
+            'status': self.status,
+            'payment_id': self.payment_id,
+            'items': [item.to_dict() for item in self.items]
+        }
+
+class OrderItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    product_name = db.Column(db.String(255), nullable=False)
+    quantity = db.Column(db.Integer, default=1)
+    price = db.Column(db.Float, nullable=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_name': self.product_name,
+            'quantity': self.quantity,
+            'price': self.price,
+            'total': round(self.quantity * self.price, 2)
+        }
+
+class Address(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('signup.id'), nullable=False)
+    full_name = db.Column(db.String(100), nullable=False)
+    street_address = db.Column(db.String(255), nullable=False)
+    city = db.Column(db.String(100), nullable=False)
+    state = db.Column(db.String(100), nullable=False)
+    postal_code = db.Column(db.String(20), nullable=False)
+    country = db.Column(db.String(100), nullable=False)
+    is_default = db.Column(db.Boolean, default=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'full_name': self.full_name,
+            'street_address': self.street_address,
+            'city': self.city,
+            'state': self.state,
+            'postal_code': self.postal_code,
+            'country': self.country,
+            'is_default': self.is_default
+        }
 
 # Define global variables for the recommendation models
 user_activity_data = None
@@ -441,8 +521,11 @@ def view_product(product_name):
         return "Product not found", 404
     
     price = random.choice([40, 50, 60, 70, 100, 122, 106, 50, 30, 50])
-    return render_template('product_detail.html', product=product, price=price)
-
+    
+    # Add random product image URLs for the "You Might Also Like" section
+    random_product_image_urls = [random.choice(random_image_urls) for _ in range(4)]
+    
+    return render_template('product_detail.html', product=product, price=price, random_product_image_urls=random_product_image_urls)
 
 @app.route('/profile')
 @login_required
@@ -542,6 +625,7 @@ def recommendation_visualization():
     }
     return render_template('recommendation_visualization.html', weights=weights)
 
+
 @app.route('/admin/dashboard')
 @login_required
 def admin_dashboard():
@@ -553,6 +637,7 @@ def admin_dashboard():
         'content_based': 0.6, 'collaborative': 0.4, 'neural': 0.0
     }
     
+    # Get recommendation feedback
     feedback = RecommendationFeedback.query.all()
     feedback_df = pd.DataFrame([{
         'user_id': f.user_id, 'product_name': f.product_name, 'recommendation_type': f.recommendation_type,
@@ -566,6 +651,7 @@ def admin_dashboard():
     else:
         avg_rating_by_type, rating_counts, recent_feedback = {}, {}, pd.DataFrame()
     
+    # User activities
     activities = UserActivity.query.all()
     activity_df = pd.DataFrame([{
         'user_id': a.user_id, 'product_name': a.product_name, 'activity_type': a.activity_type,
@@ -579,6 +665,74 @@ def admin_dashboard():
     else:
         activity_counts, top_products, active_users = {}, {}, {}
     
+    # Order data for admin dashboard
+    orders = Order.query.all()
+    
+    # Calculate sales metrics
+    total_revenue = sum(order.total_amount for order in orders) if orders else 0
+    avg_order_value = total_revenue / len(orders) if orders else 0
+    
+    # Calculate cart conversion rate
+    add_to_cart_count = activity_df[activity_df['activity_type'] == 'add_to_cart'].shape[0] if not activity_df.empty else 0
+    purchase_count = activity_df[activity_df['activity_type'] == 'purchase'].shape[0] if not activity_df.empty else 0
+    cart_conversion_rate = purchase_count / add_to_cart_count if add_to_cart_count > 0 else 0
+    
+    # Get abandoned carts
+    # Here we're defining "abandoned" as carts with items that haven't been checked out in 24 hours
+    one_day_ago = datetime.now() - timedelta(days=1)
+    abandoned_cart_items = CartItem.query.filter(CartItem.added_at < one_day_ago).all()
+    
+    # Group abandoned cart items by user
+    abandoned_carts = []
+    if abandoned_cart_items:
+        cart_by_user = {}
+        for item in abandoned_cart_items:
+            if item.user_id not in cart_by_user:
+                cart_by_user[item.user_id] = {
+                    'user_id': item.user_id,
+                    'items': [],
+                    'total_value': 0,
+                    'last_updated': item.added_at,
+                    'products': []
+                }
+            
+            cart_by_user[item.user_id]['items'].append(item)
+            cart_by_user[item.user_id]['total_value'] += item.price * item.quantity
+            cart_by_user[item.user_id]['products'].append(item.product_name)
+            
+            # Update last_updated time if this item is more recent
+            if item.added_at > cart_by_user[item.user_id]['last_updated']:
+                cart_by_user[item.user_id]['last_updated'] = item.added_at
+        
+        abandoned_carts = list(cart_by_user.values())
+    
+    # Calculate best selling products
+    best_selling_products = {}
+    for order in orders:
+        for item in order.items:
+            product_name = item.product_name
+            if product_name not in best_selling_products:
+                best_selling_products[product_name] = {
+                    'quantity': 0,
+                    'revenue': 0,
+                    'rating': 0
+                }
+            
+            best_selling_products[product_name]['quantity'] += item.quantity
+            best_selling_products[product_name]['revenue'] += item.price * item.quantity
+            
+            # Try to get product rating from the dataset
+            product_data = train_data[train_data['Name'] == product_name]
+            if not product_data.empty:
+                best_selling_products[product_name]['rating'] = product_data.iloc[0]['Rating']
+    
+    # Sort best selling products by quantity in descending order
+    best_selling_products = dict(sorted(
+        best_selling_products.items(), 
+        key=lambda item: item[1]['quantity'], 
+        reverse=True
+    )[:10])  # Show top 10 best sellers
+    
     return render_template('admin_dashboard.html',
                           avg_rating_by_type=avg_rating_by_type,
                           rating_counts=rating_counts,
@@ -587,7 +741,14 @@ def admin_dashboard():
                           top_products=top_products,
                           active_users=active_users,
                           activity_df=activity_df,
-                          weights=weights)
+                          weights=weights,
+                          # New order-related variables
+                          orders=orders,
+                          total_revenue=total_revenue,
+                          avg_order_value=avg_order_value,
+                          cart_conversion_rate=cart_conversion_rate,
+                          abandoned_carts=abandoned_carts,
+                          best_selling_products=best_selling_products)
 
 @app.route('/admin/adjust_weights', methods=['GET', 'POST'])
 @login_required
@@ -1226,6 +1387,506 @@ def apply_best_variant(test_id):
     
     flash(f'Successfully applied weights from {best_variant["name"]}', 'success')
     return jsonify({'success': True, 'variant': best_variant}), 200
+
+
+# Add these routes to your app.py file
+def get_cart_count(user_id):
+    """Get the number of items in the user's cart"""
+    if not user_id:
+        return 0
+    return db.session.query(db.func.sum(CartItem.quantity)).filter_by(user_id=user_id).scalar() or 0
+
+# Add this before_request handler to make cart count available to all templates
+@app.before_request
+def before_request():
+    """Run before each request to set up global variables"""
+    if 'user_id' in session:
+        # Add cart count to all templates
+        g.cart_item_count = get_cart_count(session['user_id'])
+    else:
+        g.cart_item_count = 0
+
+# Add this context processor to make the cart count available to all templates
+@app.context_processor
+def inject_cart_count():
+    """Add cart count to template context"""
+    return {'cart_item_count': getattr(g, 'cart_item_count', 0)}
+
+# Cart and Checkout Routes
+@app.route('/cart')
+@login_required
+def view_cart():
+    """View shopping cart contents"""
+    user_id = session['user_id']
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+    
+    # Prepare cart items with product details
+    enriched_cart_items = []
+    for item in cart_items:
+        product_data = train_data[train_data['Name'] == item.product_name]
+        if not product_data.empty:
+            product = product_data.iloc[0]
+            enriched_item = item.to_dict()
+            enriched_item['image_url'] = product['ImageURL']
+            enriched_item['brand'] = product['Brand']
+            enriched_cart_items.append(enriched_item)
+    
+    # Calculate totals
+    subtotal = sum(item['total'] for item in enriched_cart_items)
+    
+    # Apply shipping cost - free shipping for orders over $50
+    shipping_cost = 0 if subtotal >= 50 else 5.99
+    
+    # Apply tax (e.g. 8%)
+    tax = subtotal * 0.08
+    
+    # Calculate total
+    total = subtotal + shipping_cost + tax
+    
+    # Get recommendations for cross-selling
+    recommendations = []
+    if cart_items:
+        # Get the most recent item in the cart
+        recent_item = cart_items[-1].product_name
+        try:
+            rec_df = recommendation_system.get_recommendations(user_id, recent_item, top_n=4)
+            # Add Price column with random values between 20-200
+            if not rec_df.empty:
+                rec_df['Price'] = np.random.uniform(20, 200, size=len(rec_df))
+                recommendations = rec_df.to_dict('records')
+        except Exception as e:
+            print(f"Error getting recommendations: {e}")
+    
+    total_items = sum(item['quantity'] for item in enriched_cart_items)
+    
+    return render_template('cart.html', 
+                          cart_items=enriched_cart_items,
+                          subtotal=subtotal,
+                          shipping_cost=shipping_cost,
+                          tax=tax,
+                          total=total,
+                          total_items=total_items,
+                          recommendations=recommendations)
+
+@app.route('/add-to-cart/<path:product_name>', methods=['GET', 'POST'])
+@login_required
+def add_to_cart(product_name):
+    """Add a product to the shopping cart"""
+    user_id = session['user_id']
+    
+    # Get the product from the dataset
+    product_data = train_data[train_data['Name'] == product_name]
+    if product_data.empty:
+        flash('Product not found.', 'danger')
+        return redirect(url_for('index'))
+    
+    # Generate a random price between 20 and 200 dollars
+    price = round(np.random.uniform(20, 200), 2)
+    
+    # Check if the product is already in the cart
+    existing_item = CartItem.query.filter_by(user_id=user_id, product_name=product_name).first()
+    
+    if existing_item:
+        # Increment the quantity if already in cart
+        existing_item.quantity += 1
+        db.session.commit()
+        flash(f'Updated quantity of {product_name} in your cart.', 'success')
+    else:
+        # Add new item to cart
+        new_item = CartItem(
+            user_id=user_id,
+            product_name=product_name,
+            price=price,
+            quantity=1
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        
+        # Record user activity
+        new_activity = UserActivity(
+            user_id=user_id,
+            product_name=product_name,
+            activity_type='add_to_cart'
+        )
+        db.session.add(new_activity)
+        db.session.commit()
+        
+        flash(f'Added {product_name} to your cart.', 'success')
+    
+    # Check if the request wants to redirect to cart or continue shopping
+    redirect_to = request.args.get('redirect_to', 'cart')
+    if redirect_to == 'cart':
+        return redirect(url_for('view_cart'))
+    else:
+        return redirect(url_for('view_product', product_name=product_name))
+
+@app.route('/remove-from-cart/<int:item_id>')
+@login_required
+def remove_from_cart(item_id):
+    """Remove an item from the shopping cart"""
+    user_id = session['user_id']
+    
+    # Find the cart item
+    cart_item = CartItem.query.filter_by(id=item_id, user_id=user_id).first()
+    
+    if cart_item:
+        product_name = cart_item.product_name
+        db.session.delete(cart_item)
+        db.session.commit()
+        flash(f'Removed {product_name} from your cart.', 'success')
+    else:
+        flash('Item not found in your cart.', 'warning')
+    
+    return redirect(url_for('view_cart'))
+
+@app.route('/update-cart', methods=['POST'])
+@login_required
+def update_cart():
+    """Update cart quantities"""
+    user_id = session['user_id']
+    
+    # Get all cart items for the user
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+    
+    # Update quantities based on form data
+    for item in cart_items:
+        quantity_key = f'quantity_{item.id}'
+        if quantity_key in request.form:
+            try:
+                new_quantity = int(request.form[quantity_key])
+                if 1 <= new_quantity <= 10:  # Limit quantity between 1 and 10
+                    item.quantity = new_quantity
+            except ValueError:
+                pass  # Ignore invalid input
+    
+    db.session.commit()
+    flash('Cart updated successfully.', 'success')
+    
+    return redirect(url_for('view_cart'))
+
+@app.route('/checkout')
+@login_required
+def checkout():
+    """Show checkout page"""
+    user_id = session['user_id']
+    
+    # Check if cart is empty
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+    if not cart_items:
+        flash('Your cart is empty. Add some products before checking out.', 'warning')
+        return redirect(url_for('view_cart'))
+    
+    # Prepare cart items with product details
+    enriched_cart_items = []
+    for item in cart_items:
+        product_data = train_data[train_data['Name'] == item.product_name]
+        if not product_data.empty:
+            product = product_data.iloc[0]
+            enriched_item = item.to_dict()
+            enriched_item['image_url'] = product['ImageURL']
+            enriched_item['brand'] = product['Brand']
+            enriched_cart_items.append(enriched_item)
+    
+    # Calculate totals
+    subtotal = sum(item['total'] for item in enriched_cart_items)
+    shipping_cost = 0 if subtotal >= 50 else 5.99
+    tax = subtotal * 0.08
+    total = subtotal + shipping_cost + tax
+    total_items = sum(item['quantity'] for item in enriched_cart_items)
+    
+    # Get saved addresses
+    saved_addresses = Address.query.filter_by(user_id=user_id).all()
+    
+    return render_template('checkout.html',
+                          cart_items=enriched_cart_items,
+                          subtotal=subtotal,
+                          shipping_cost=shipping_cost,
+                          tax=tax,
+                          total=total,
+                          total_items=total_items,
+                          saved_addresses=saved_addresses)
+
+@app.route('/place-order', methods=['POST'])
+@login_required
+def place_order():
+    """Process order placement"""
+    user_id = session['user_id']
+    
+    # Check if cart is empty
+    cart_items = CartItem.query.filter_by(user_id=user_id).all()
+    if not cart_items:
+        flash('Your cart is empty. Add some products before checking out.', 'warning')
+        return redirect(url_for('view_cart'))
+    
+    # Calculate order total
+    subtotal = sum(item.price * item.quantity for item in cart_items)
+    
+    # Get shipping method and cost
+    shipping_method = request.form.get('shipping_method', 'standard')
+    if shipping_method == 'standard':
+        shipping_cost = 0 if subtotal >= 50 else 5.99
+    elif shipping_method == 'express':
+        shipping_cost = 9.99
+    elif shipping_method == 'overnight':
+        shipping_cost = 19.99
+    else:
+        shipping_cost = 0
+    
+    # Calculate tax
+    tax = subtotal * 0.08
+    
+    # Calculate total
+    total_amount = subtotal + shipping_cost + tax
+    
+    # Process address information
+    shipping_address = None
+    address_id = request.form.get('address_id')
+    
+    if address_id and address_id != 'new':
+        # Use existing address
+        shipping_address = Address.query.filter_by(id=address_id, user_id=user_id).first()
+        if not shipping_address:
+            flash('The selected address was not found.', 'danger')
+            return redirect(url_for('checkout'))
+    else:
+        # Create new address
+        full_name = request.form.get('full_name')
+        street_address = request.form.get('street_address')
+        city = request.form.get('city')
+        state = request.form.get('state')
+        postal_code = request.form.get('postal_code')
+        country = request.form.get('country')
+        
+        if not all([full_name, street_address, city, state, postal_code, country]):
+            flash('Please fill out all address fields.', 'danger')
+            return redirect(url_for('checkout'))
+        
+        shipping_address = Address(
+            user_id=user_id,
+            full_name=full_name,
+            street_address=street_address,
+            city=city,
+            state=state,
+            postal_code=postal_code,
+            country=country
+        )
+        
+        # Save address if requested
+        if request.form.get('save_address') == '1':
+            shipping_address.is_default = not Address.query.filter_by(user_id=user_id).first()
+            db.session.add(shipping_address)
+            db.session.commit()
+    
+    # Process payment information
+    payment_method = request.form.get('payment_method', 'credit_card')
+    payment_id = None
+    card_last_four = None
+    card_type = None
+    
+    if payment_method == 'credit_card':
+        # In a real system, you would process payment through a payment gateway
+        # For our demo, we'll simulate payment success
+        card_number = request.form.get('card_number', '').replace(' ', '')
+        card_last_four = card_number[-4:] if len(card_number) >= 4 else '0000'
+        
+        # Determine card type based on first digit
+        if card_number.startswith('4'):
+            card_type = 'Visa'
+        elif card_number.startswith('5'):
+            card_type = 'MasterCard'
+        elif card_number.startswith('3'):
+            card_type = 'American Express'
+        elif card_number.startswith('6'):
+            card_type = 'Discover'
+        else:
+            card_type = 'Credit Card'
+        
+        # Generate a fake payment ID
+        payment_id = f"CC-{datetime.now().strftime('%Y%m%d')}-{random.randint(10000, 99999)}"
+    
+    elif payment_method == 'paypal':
+        # In a real system, you would redirect to PayPal for payment
+        # For our demo, we'll simulate payment success
+        payment_id = f"PP-{datetime.now().strftime('%Y%m%d')}-{random.randint(10000, 99999)}"
+    
+    # Create the order
+    order = Order(
+        user_id=user_id,
+        total_amount=total_amount,
+        status='paid',  # For demo purposes, set status to paid
+        payment_id=payment_id,
+        shipping_address=shipping_address.street_address if shipping_address else None
+    )
+    
+    db.session.add(order)
+    db.session.commit()
+    
+    # Create order items
+    for cart_item in cart_items:
+        order_item = OrderItem(
+            order_id=order.id,
+            product_name=cart_item.product_name,
+            quantity=cart_item.quantity,
+            price=cart_item.price
+        )
+        db.session.add(order_item)
+    
+    # Clear the cart
+    for cart_item in cart_items:
+        db.session.delete(cart_item)
+    
+    db.session.commit()
+    
+    # Record user activity
+    new_activity = UserActivity(
+        user_id=user_id,
+        product_name=f"Order #{order.id}",
+        activity_type='purchase'
+    )
+    db.session.add(new_activity)
+    db.session.commit()
+    
+    # For A/B testing analytics
+    if ab_testing_manager is not None:
+        ab_testing_manager.record_metric(user_id, 'purchase')
+    
+    # Get recommendations for order confirmation page
+    recommendations = []
+    try:
+        rec_df = recommendation_system.get_recommendations(user_id, top_n=4)
+        if not rec_df.empty:
+            rec_df['Price'] = np.random.uniform(20, 200, size=len(rec_df))
+            recommendations = rec_df.to_dict('records')
+    except Exception as e:
+        print(f"Error getting recommendations: {e}")
+    
+    # Calculate estimated delivery date based on shipping method
+    today = datetime.now()
+    if shipping_method == 'overnight':
+        estimated_delivery_date = today + timedelta(days=1)
+    elif shipping_method == 'express':
+        estimated_delivery_date = today + timedelta(days=3)
+    else:
+        estimated_delivery_date = today + timedelta(days=5)
+    
+    # Get user email
+    user = Signup.query.get(user_id)
+    user_email = user.email if user else "customer@example.com"
+    
+    # Prepare order items with images
+    order_items = []
+    for item in order.items:
+        product_data = train_data[train_data['Name'] == item.product_name]
+        if not product_data.empty:
+            product = product_data.iloc[0]
+            item_dict = item.to_dict()
+            item_dict['image_url'] = product['ImageURL']
+            order_items.append(item_dict)
+    
+    return render_template('order_confirmation.html',
+                          order=order,
+                          order_items=order_items,
+                          shipping_address=shipping_address,
+                          payment_method=payment_method,
+                          card_type=card_type,
+                          card_last_four=card_last_four,
+                          payment_id=payment_id,
+                          subtotal=subtotal,
+                          shipping_cost=shipping_cost,
+                          tax=tax,
+                          estimated_delivery_date=estimated_delivery_date,
+                          user_email=user_email,
+                          recommendations=recommendations)
+
+@app.route('/order-history')
+@login_required
+def order_history():
+    """Show order history for current user"""
+    user_id = session['user_id']
+    
+    # Get all orders for the user
+    orders = Order.query.filter_by(user_id=user_id).order_by(Order.order_date.desc()).all()
+    
+    # Get the default shipping address
+    default_address = Address.query.filter_by(user_id=user_id, is_default=True).first()
+    
+    # Enrich orders with additional data
+    for order in orders:
+        # DON'T assign the whole address object to order.shipping_address
+        # Instead, add it as a separate attribute that won't be persisted to the database
+        order.address = default_address
+        
+        # Add images to order items
+        for item in order.items:
+            product_data = train_data[train_data['Name'] == item.product_name]
+            if not product_data.empty:
+                product = product_data.iloc[0]
+                item.image_url = product['ImageURL']
+    
+    return render_template('order_history.html', orders=orders)
+
+@app.route('/order/<int:order_id>')
+@login_required
+def view_order(order_id):
+    """View details for a specific order"""
+    user_id = session['user_id']
+    
+    # Get the order, ensuring it belongs to the current user
+    order = Order.query.filter_by(id=order_id, user_id=user_id).first_or_404()
+    
+    # Get shipping address
+    shipping_address = Address.query.filter_by(user_id=user_id, is_default=True).first()
+    
+    # Calculate subtotal, shipping cost, and tax
+    subtotal = sum(item.price * item.quantity for item in order.items)
+    shipping_cost = order.total_amount - subtotal * 1.08  # Approximate from total
+    tax = subtotal * 0.08
+    
+    # Add images to order items
+    for item in order.items:
+        product_data = train_data[train_data['Name'] == item.product_name]
+        if not product_data.empty:
+            product = product_data.iloc[0]
+            item.image_url = product['ImageURL']
+    
+    # For demonstration, create simulated tracking and delivery dates
+    order_date = order.order_date
+    processing_date = order_date + timedelta(days=1)
+    shipping_date = processing_date + timedelta(days=1)
+    estimated_delivery_date = shipping_date + timedelta(days=3)
+    
+    # Generate a fake tracking number
+    tracking_number = f"TRACK-{order_id}-{random.randint(10000000, 99999999)}"
+    
+    # Determine payment method from payment ID
+    payment_method = 'credit_card' if order.payment_id and order.payment_id.startswith('CC-') else 'paypal'
+    
+    # For credit cards, determine card type and last four digits
+    card_type = "Credit Card"
+    card_last_four = "0000"
+    
+    if payment_method == 'credit_card':
+        card_types = ['Visa', 'MasterCard', 'American Express', 'Discover']
+        card_type = random.choice(card_types)
+        card_last_four = str(random.randint(1000, 9999))
+    
+    # For PayPal, extract the payment ID
+    payment_id = order.payment_id
+    
+    return render_template('view_order.html',
+                          order=order,
+                          shipping_address=shipping_address,
+                          subtotal=subtotal,
+                          shipping_cost=shipping_cost,
+                          tax=tax,
+                          tracking_number=tracking_number,
+                          processing_date=processing_date,
+                          shipping_date=shipping_date,
+                          estimated_delivery_date=estimated_delivery_date,
+                          payment_method=payment_method,
+                          card_type=card_type,
+                          card_last_four=card_last_four,
+                          payment_id=payment_id)
 
 
 if __name__ == '__main__':
